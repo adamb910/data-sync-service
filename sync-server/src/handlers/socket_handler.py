@@ -1,5 +1,6 @@
 import asyncio
 import json
+import traceback
 from websockets.asyncio.server import serve
 
 
@@ -25,19 +26,23 @@ class SocketHandler:
         '''
         print("New client connected")
         self.connected_clients.add(websocket)
+
+        #connection close handlers
+        closed = asyncio.ensure_future(websocket.wait_closed())
+        closed.add_done_callback(lambda task: self.client_disconnect(websocket))
+
         try:
             async for message in websocket:
-                await self.handle_message(message)
+                await self.handle_message(message, websocket)
 
-        except websockets.exceptions.ConnectionClosed as e:
-            print("Client disconnected")
-            self.connected_clients.remove(websocket)
-        except:
-            # More granular error handling
+        except Exception as e:
+            # More granular exception handling
             print("An unexpected error occured.")
+            traceback.print_exc()
 
 
     async def handle_message(self, message, websocket):
+        # schema validation (and content checks) could work nicely for the JSON messages
         data = json.loads(message)
             
         # Check the the message type, could be hidden behind it's own class group with related logic
@@ -47,15 +52,25 @@ class SocketHandler:
         message_type = data.get('type')
 
         match message_type:
+
             case 'hello_sync':
                 date_time = data.get("dateTime")
+
                 updated_batches = self.sync_service.get_batches_since_datetime(date_time)
-                #TODO: clarify data structure here
-                websocket.send(updated_batches)
+
+                await websocket.send(json.dumps(updated_batches))
+
             case 'push_sync':
-                updated_data = data.get("batch")
-                self.sync_service.push_update(updated_data)
-                #TODO: clarify data structures here
-                websocket.send({"message": "ACK"})
+                id = data.get("id", None)
+                new_client_data = data.get("batch")
+                change = data.get("change")
+
+                updated_synced_record = self.sync_service.push_batch(id, change, new_client_data)
+
                 for other_websockets in self.connected_clients:
-                    other_websockets.send(updated_data)
+                    await other_websockets.send(json.dumps(updated_synced_record.to_json()))
+    
+
+    def client_disconnect(self, websocket):
+        print("Client disconnected")
+        self.connected_clients.remove(websocket)
