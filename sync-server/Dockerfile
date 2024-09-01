@@ -17,4 +17,6 @@ RUN pip install -r requirements.txt
 
 ENV PYTHONUNBUFFERED=1
 
+#TODO: stages, and a seperate stage for dockerized / ci testing
+
 CMD ["python", "/app/src/main.py"]

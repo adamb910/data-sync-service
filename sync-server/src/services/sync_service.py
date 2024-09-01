@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import constants
 from repository.engine import engine
 from repository.models.data_batch import DataBatch
 
@@ -25,7 +26,7 @@ class SyncService():
     def get_batches_since_datetime(self, datetime):
         session = Session(engine)
         records = session.query(DataBatch).filter(DataBatch.updated_at >= datetime).all()
-        print("SyncService.get_batches_since_datetime")
+
         records_as_dicts = []
 
         for record in records:
@@ -36,10 +37,10 @@ class SyncService():
 
     def _insert(self, data):
         with Session(engine) as session:
-            batch = DataBatch(data=data, updated_at=datetime.now(), status="active")
+            batch = DataBatch(data=data, updated_at=datetime.now(), status=constants.ACTIVE)
             session.add(batch)
             session.commit()
-        return batch
+            return batch.to_dict()
 
 
     def _delete(self, id):  
@@ -47,9 +48,9 @@ class SyncService():
             batch_to_delete = session.query(DataBatch).filter(DataBatch.id == id).first()
             if batch_to_delete:
                 # this operation could be encapsulated in the object
-                batch_to_delete.status = "deleted"
+                batch_to_delete.status = constants.DELETED
                 session.commit()
-                return batch_to_delete
+                return batch_to_delete.to_dict()
 
     def _update(self, id, data):
         with Session(engine) as session:
@@ -58,4 +59,6 @@ class SyncService():
                 batch_to_update.data = data
                 batch_to_update.updated_at=datetime.now()
                 session.commit()
-                return batch_to_update
+                return batch_to_update.to_dict()
+            else:
+                raise ValueError("You need an ID for update operations.")
